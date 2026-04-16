@@ -142,8 +142,8 @@ export function Chat({ initialEmail = "" }: ChatProps) {
   }
 
   return (
-    <main className="flex min-h-screen bg-[#f8faf7] text-[#181a1f]">
-      <aside className="hidden min-h-screen w-72 flex-col border-r border-[#d8ded8] bg-[#ffffff] px-5 py-6 md:flex">
+    <main className="flex h-screen overflow-hidden bg-[#f8faf7] text-[#181a1f]">
+      <aside className="hidden h-screen w-72 flex-col border-r border-[#d8ded8] bg-[#ffffff] px-5 py-6 md:flex">
         <div>
           <div className="mb-8 flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-lg bg-[#16785c] text-sm font-bold text-white">
@@ -190,7 +190,7 @@ export function Chat({ initialEmail = "" }: ChatProps) {
         </div>
       </aside>
 
-      <section className="flex min-h-screen flex-1 flex-col">
+      <section className="flex h-screen min-w-0 flex-1 flex-col">
         <header className="border-b border-[#d8ded8] bg-white px-5 py-4 sm:px-8">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -205,7 +205,7 @@ export function Chat({ initialEmail = "" }: ChatProps) {
           </div>
         </header>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
           {messages.map((message) => (
             <ChatMessageRow
               activeSource={activeSource}
