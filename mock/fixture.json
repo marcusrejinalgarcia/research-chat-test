@@ -1,0 +1,26 @@
+{
+  "query": "What are the key capabilities of CrowdStrike Falcon for endpoint detection?",
+  "answer": "CrowdStrike Falcon provides AI-powered endpoint detection and response (EDR) through its cloud-native Threat Graph platform [1]. Its lightweight agent continuously monitors process behaviour, network connections, and file activity without requiring signature updates [2]. The platform correlates telemetry across millions of endpoints globally to identify novel attack patterns in real time [1][3]. Falcon's Overwatch team provides 24/7 managed threat hunting on top of the automated detections [3].",
+  "sources": [
+    {
+      "id": 1,
+      "title": "CrowdStrike Falcon Platform — Product Overview (2024)",
+      "snippet": "Falcon's Threat Graph processes over 1 trillion security events per week, leveraging AI and behavioral analytics to detect threats across endpoints, cloud workloads, and identities in real time.",
+      "relevance_score": 0.97
+    },
+    {
+      "id": 2,
+      "title": "EDR Agent Architecture: Lightweight vs. Legacy AV Approaches",
+      "snippet": "Unlike traditional signature-based antivirus, modern EDR agents such as Falcon operate via kernel-level hooks and user-space sensors, enabling continuous telemetry collection with a sub-1% CPU footprint under normal workloads.",
+      "relevance_score": 0.91
+    },
+    {
+      "id": 3,
+      "title": "Managed Detection & Response: CrowdStrike Overwatch Report Q3 2024",
+      "snippet": "Overwatch analysts prevented 60,000+ potential breaches in the first half of 2024 by combining automated Falcon detections with human-led threat hunting across customer environments.",
+      "relevance_score": 0.85
+    }
+  ],
+  "error_query": "error",
+  "error_behaviour": "Simulate a failure after streaming the first 60 characters of the answer. The UI should display a recovery message such as 'Something went wrong — please try again.'"
+}
