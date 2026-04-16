@@ -4,9 +4,11 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOutMock } from "./actions/auth";
 import { ChatMessageRow } from "./chat-message";
-import type { ActiveSource, ChatMessage } from "./chat-types";
+import { createMessageId } from "./chat-ids";
+import type { ActiveSource } from "./chat-types";
 import { useAuthStore } from "./store/auth";
 import { useChatStream } from "./use-chat-stream";
+import { useSessionMessages } from "./use-session-messages";
 
 type ChatProps = {
   initialEmail?: string;
@@ -16,7 +18,6 @@ const RECOVERY_MESSAGE = "Something went wrong. Please try again.";
 const INITIAL_QUERY_TYPE_INTERVAL_MS = 22;
 const INITIAL_QUERY =
   "What are the key capabilities of CrowdStrike Falcon for endpoint detection?";
-const CHAT_SESSION_KEY = "research-chat:messages";
 
 function wait(ms: number) {
   return new Promise((resolve) => {
@@ -26,29 +27,6 @@ function wait(ms: number) {
 
 function getEmailInitial(email: string) {
   return email.trim().charAt(0).toUpperCase() || "U";
-}
-
-function readStoredMessages() {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  const storedMessages = window.sessionStorage.getItem(CHAT_SESSION_KEY);
-  if (!storedMessages) {
-    return [];
-  }
-
-  try {
-    const parsedMessages = JSON.parse(storedMessages) as ChatMessage[];
-
-    if (!Array.isArray(parsedMessages)) {
-      return [];
-    }
-
-    return parsedMessages;
-  } catch {
-    return [];
-  }
 }
 
 export function Chat({ initialEmail = "" }: ChatProps) {
@@ -64,6 +42,10 @@ export function Chat({ initialEmail = "" }: ChatProps) {
   const [isConfirmingNewChat, setIsConfirmingNewChat] = useState(false);
   const hasStartedFixture = useRef(false);
   const email = storedEmail || initialEmail || "you@example.com";
+  const { clearStoredMessages, getStoredMessages } = useSessionMessages({
+    isPaused: isStreaming || isTypingInitialQuery,
+    messages,
+  });
 
   const startInitialChat = useCallback(async () => {
     setActiveSource(null);
@@ -89,7 +71,7 @@ export function Chat({ initialEmail = "" }: ChatProps) {
     hasStartedFixture.current = true;
 
     async function restoreOrStartInitialChat() {
-      const storedMessages = readStoredMessages();
+      const storedMessages = getStoredMessages();
 
       if (storedMessages.length > 0) {
         replaceMessages(storedMessages);
@@ -103,27 +85,14 @@ export function Chat({ initialEmail = "" }: ChatProps) {
       setIsTypingInitialQuery(false);
       replaceMessages([
         {
-          id: Date.now(),
+          id: createMessageId(),
           author: "assistant",
           body: RECOVERY_MESSAGE,
           time: "Now",
         },
       ]);
     });
-  }, [replaceMessages, startInitialChat]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || isStreaming || isTypingInitialQuery) {
-      return;
-    }
-
-    if (messages.length === 0) {
-      window.sessionStorage.removeItem(CHAT_SESSION_KEY);
-      return;
-    }
-
-    window.sessionStorage.setItem(CHAT_SESSION_KEY, JSON.stringify(messages));
-  }, [isStreaming, isTypingInitialQuery, messages]);
+  }, [getStoredMessages, replaceMessages, startInitialChat]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -141,14 +110,14 @@ export function Chat({ initialEmail = "" }: ChatProps) {
   async function handleLogout() {
     setIsLoggingOut(true);
     await signOutMock();
-    window.sessionStorage.removeItem(CHAT_SESSION_KEY);
+    clearStoredMessages();
     logout();
     router.refresh();
   }
 
   async function handleNewChat() {
     setIsConfirmingNewChat(false);
-    window.sessionStorage.removeItem(CHAT_SESSION_KEY);
+    clearStoredMessages();
     setActiveSource(null);
     setDraft("");
     clearMessages();
@@ -159,7 +128,7 @@ export function Chat({ initialEmail = "" }: ChatProps) {
       setIsTypingInitialQuery(false);
       replaceMessages([
         {
-          id: Date.now(),
+          id: createMessageId(),
           author: "assistant",
           body: RECOVERY_MESSAGE,
           time: "Now",
