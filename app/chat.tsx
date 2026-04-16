@@ -1,18 +1,11 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { signOutMock } from "./actions/auth";
+import { ChatMessageRow } from "./chat-message";
+import type { ActiveSource, ChatMessage, FixtureSource } from "./chat-types";
 import { useAuthStore } from "./store/auth";
-
-type ChatMessage = {
-  id: number;
-  author: "assistant" | "you";
-  body: string;
-  sources?: FixtureSource[];
-  time: string;
-};
 
 type ChatProps = {
   initialEmail?: string;
@@ -20,13 +13,6 @@ type ChatProps = {
 
 type InitialQueryResponse = {
   query: string;
-};
-
-type FixtureSource = {
-  id: number;
-  title: string;
-  snippet: string;
-  relevance_score: number;
 };
 
 type ChatStreamEvent =
@@ -42,11 +28,6 @@ type ChatStreamEvent =
       type: "source";
       source: FixtureSource;
     };
-
-type ActiveSource = {
-  messageId: number;
-  sourceId: number;
-};
 
 const RECOVERY_MESSAGE = "Something went wrong. Please try again.";
 const INITIAL_QUERY_TYPE_INTERVAL_MS = 22;
@@ -83,55 +64,6 @@ function readStoredMessages() {
   } catch {
     return [];
   }
-}
-
-function renderAnswerText(
-  messageId: number,
-  text: string,
-  sources: FixtureSource[] | undefined,
-  setActiveSource: (activeSource: ActiveSource | null) => void,
-) {
-  if (!text) {
-    return (
-      <Image
-        alt="Loading response"
-        className="size-8"
-        height={32}
-        src="/loading_ring.gif"
-        unoptimized
-        width={32}
-      />
-    );
-  }
-
-  if (!sources?.length) {
-    return text;
-  }
-
-  const sourceIds = new Set(sources.map((source) => source.id));
-  const parts = text.split(/(\[\d+\])/g);
-
-  return parts.map((part, index) => {
-    const citationId = Number(part.match(/^\[(\d+)\]$/)?.[1]);
-
-    if (!citationId || !sourceIds.has(citationId)) {
-      return <span key={`${part}-${index}`}>{part}</span>;
-    }
-
-    return (
-      <button
-        className="mx-0.5 rounded border border-[#9ac6b3] bg-[#eef7f2] px-1.5 py-0.5 text-xs font-semibold text-[#125c47] transition hover:bg-[#d8f0e4] focus:outline-none focus:ring-2 focus:ring-[#16785c]/25"
-        key={`${part}-${index}`}
-        onBlur={() => setActiveSource(null)}
-        onFocus={() => setActiveSource({ messageId, sourceId: citationId })}
-        onMouseEnter={() => setActiveSource({ messageId, sourceId: citationId })}
-        onMouseLeave={() => setActiveSource(null)}
-        type="button"
-      >
-        {part}
-      </button>
-    );
-  });
 }
 
 export function Chat({ initialEmail = "" }: ChatProps) {
@@ -457,110 +389,14 @@ export function Chat({ initialEmail = "" }: ChatProps) {
         </header>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
-          {messages.map((message) => {
-            const isUser = message.author === "you";
-
-            return (
-              <article
-                className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
-                key={message.id}
-              >
-                {!isUser && (
-                  <div className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#16785c] text-xs font-bold text-white">
-                    AI
-                  </div>
-                )}
-
-                <div
-                  className={`flex max-w-[min(38rem,78vw)] flex-col gap-3 ${
-                    isUser ? "items-end" : "items-start"
-                  }`}
-                >
-                  <div
-                    className={`rounded-lg px-4 py-3 shadow-sm ${
-                      isUser
-                        ? "bg-[#1f2937] text-white"
-                        : "border border-[#d8ded8] bg-white text-[#181a1f]"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap text-sm leading-6">
-                      {isUser
-                        ? message.body
-                        : renderAnswerText(
-                            message.id,
-                            message.body,
-                            message.sources,
-                            setActiveSource,
-                          )}
-                    </p>
-                    <p
-                      className={`mt-2 text-xs ${
-                        isUser ? "text-[#d4d9df]" : "text-[#626a66]"
-                      }`}
-                    >
-                      {message.time}
-                    </p>
-                  </div>
-
-                  {!isUser && !!message.sources?.length && (
-                    <div className="grid w-full gap-2">
-                      {message.sources.map((source) => {
-                        const isActive =
-                          activeSource?.messageId === message.id &&
-                          activeSource.sourceId === source.id;
-
-                        return (
-                          <article
-                            className={`rounded-lg border px-3 py-2 transition ${
-                              isActive
-                                ? "border-[#16785c] bg-[#eef7f2]"
-                                : "border-[#d8ded8] bg-white"
-                            }`}
-                            key={source.id}
-                            onBlur={() => setActiveSource(null)}
-                            onFocus={() =>
-                              setActiveSource({
-                                messageId: message.id,
-                                sourceId: source.id,
-                              })
-                            }
-                            onMouseEnter={() =>
-                              setActiveSource({
-                                messageId: message.id,
-                                sourceId: source.id,
-                              })
-                            }
-                            onMouseLeave={() => setActiveSource(null)}
-                            tabIndex={0}
-                          >
-                            <div className="flex items-start gap-2">
-                              <span className="rounded bg-[#1f2937] px-1.5 py-0.5 text-xs font-semibold text-white">
-                                [{source.id}]
-                              </span>
-                              <div className="min-w-0">
-                                <h2 className="truncate text-sm font-semibold">
-                                  {source.title}
-                                </h2>
-                                <p className="mt-1 text-xs text-[#626a66]">
-                                  Relevance{" "}
-                                  {Math.round(source.relevance_score * 100)}%
-                                </p>
-                              </div>
-                            </div>
-                            {isActive && (
-                              <p className="mt-3 text-sm leading-6 text-[#343946]">
-                                {source.snippet}
-                              </p>
-                            )}
-                          </article>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+          {messages.map((message) => (
+            <ChatMessageRow
+              activeSource={activeSource}
+              key={message.id}
+              message={message}
+              setActiveSource={setActiveSource}
+            />
+          ))}
         </div>
 
         <form
