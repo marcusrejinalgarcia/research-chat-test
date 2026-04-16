@@ -29,7 +29,7 @@ export function Auth() {
       <section className="w-full max-w-sm">
         <div className="mb-8">
           <p className="mb-3 text-sm font-medium uppercase tracking-normal text-[#5b6270]">
-            Mock access
+            AI Research Chat UI Demo
           </p>
           <h1 className="text-4xl font-semibold tracking-normal">
             Sign in to continue
@@ -57,7 +57,7 @@ export function Auth() {
             <input
               className="h-12 w-full rounded-lg border border-[#cfd4df] bg-white px-4 text-base outline-none transition focus:border-[#1d6bff] focus:ring-4 focus:ring-[#1d6bff]/15"
               type="password"
-              placeholder="Any password works"
+              placeholder="********"
             />
           </label>
 
