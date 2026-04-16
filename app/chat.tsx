@@ -4,22 +4,13 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOutMock } from "./actions/auth";
 import { ChatMessageRow } from "./chat-message";
-import type { ActiveSource, ChatMessage, FixtureSource } from "./chat-types";
+import type { ActiveSource, ChatMessage } from "./chat-types";
 import { useAuthStore } from "./store/auth";
+import { useChatStream } from "./use-chat-stream";
 
 type ChatProps = {
   initialEmail?: string;
 };
-
-type ChatStreamEvent =
-  | {
-      type: "answer";
-      chunk: string;
-    }
-  | {
-      type: "source";
-      source: FixtureSource;
-    };
 
 const RECOVERY_MESSAGE = "Something went wrong. Please try again.";
 const INITIAL_QUERY_TYPE_INTERVAL_MS = 22;
@@ -60,168 +51,22 @@ function readStoredMessages() {
   }
 }
 
-function parseSseFrame(frame: string) {
-  const data = frame
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.replace(/^data:\s?/, ""))
-    .join("\n")
-    .trim();
-
-  if (!data) {
-    return null;
-  }
-
-  return JSON.parse(data) as ChatStreamEvent;
-}
-
 export function Chat({ initialEmail = "" }: ChatProps) {
   const router = useRouter();
   const storedEmail = useAuthStore((state) => state.email);
   const logout = useAuthStore((state) => state.logout);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { clearMessages, isStreaming, messages, replaceMessages, streamAnswer } =
+    useChatStream();
   const [draft, setDraft] = useState("");
   const [activeSource, setActiveSource] = useState<ActiveSource | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [isTypingInitialQuery, setIsTypingInitialQuery] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isConfirmingNewChat, setIsConfirmingNewChat] = useState(false);
   const hasStartedFixture = useRef(false);
   const email = storedEmail || initialEmail || "you@example.com";
 
-  const streamAnswer = useCallback(async (query?: string) => {
-    const userMessageId = Date.now();
-    const assistantMessageId = userMessageId + 1;
-    let hasStartedMessages = Boolean(query);
-
-    function startMessages(nextQuery: string) {
-      hasStartedMessages = true;
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: userMessageId,
-          author: "you",
-          body: nextQuery,
-          time: "Now",
-        },
-        {
-          id: assistantMessageId,
-          author: "assistant",
-          body: "",
-          sources: [],
-          time: "Now",
-        },
-      ]);
-    }
-
-    function updateAssistant(updater: (message: ChatMessage) => ChatMessage) {
-      setMessages((currentMessages) =>
-        currentMessages.map((message) =>
-          message.id === assistantMessageId ? updater(message) : message,
-        ),
-      );
-    }
-
-    function showRecoveryMessage() {
-      if (!hasStartedMessages) {
-        setMessages([
-          {
-            id: assistantMessageId,
-            author: "assistant",
-            body: RECOVERY_MESSAGE,
-            time: "Now",
-          },
-        ]);
-        return;
-      }
-
-      updateAssistant((message) => ({
-        ...message,
-        body: RECOVERY_MESSAGE,
-        sources: undefined,
-      }));
-    }
-
-    setIsStreaming(true);
-    setActiveSource(null);
-
-    if (query) {
-      startMessages(query);
-    }
-
-    try {
-      const params = new URLSearchParams();
-      if (query) {
-        params.set("query", query);
-      }
-      const response = await fetch(`/api/chat?${params.toString()}`);
-
-      if (!response.ok || !response.body) {
-        throw new Error("Chat stream failed");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split("\n\n");
-        buffer = frames.pop() ?? "";
-
-        for (const frame of frames) {
-          const event = parseSseFrame(frame);
-
-          if (!event) {
-            continue;
-          }
-
-          if (event.type === "answer") {
-            updateAssistant((message) => ({
-              ...message,
-              body: `${message.body}${event.chunk}`,
-            }));
-          }
-
-          if (event.type === "source") {
-            updateAssistant((message) => ({
-              ...message,
-              sources: [...(message.sources ?? []), event.source],
-            }));
-          }
-        }
-      }
-
-      const finalEvent = parseSseFrame(buffer);
-
-      if (finalEvent?.type === "answer") {
-        updateAssistant((message) => ({
-          ...message,
-          body: `${message.body}${finalEvent.chunk}`,
-        }));
-      }
-
-      if (finalEvent?.type === "source") {
-        updateAssistant((message) => ({
-          ...message,
-          sources: [...(message.sources ?? []), finalEvent.source],
-        }));
-      }
-
-    } catch {
-      showRecoveryMessage();
-    } finally {
-      setIsStreaming(false);
-    }
-  }, []);
-
   const startInitialChat = useCallback(async () => {
+    setActiveSource(null);
     setIsTypingInitialQuery(true);
     setDraft("");
 
@@ -247,7 +92,7 @@ export function Chat({ initialEmail = "" }: ChatProps) {
       const storedMessages = readStoredMessages();
 
       if (storedMessages.length > 0) {
-        setMessages(storedMessages);
+        replaceMessages(storedMessages);
         return;
       }
 
@@ -256,7 +101,7 @@ export function Chat({ initialEmail = "" }: ChatProps) {
 
     restoreOrStartInitialChat().catch(() => {
       setIsTypingInitialQuery(false);
-      setMessages([
+      replaceMessages([
         {
           id: Date.now(),
           author: "assistant",
@@ -264,9 +109,8 @@ export function Chat({ initialEmail = "" }: ChatProps) {
           time: "Now",
         },
       ]);
-      setIsStreaming(false);
     });
-  }, [startInitialChat]);
+  }, [replaceMessages, startInitialChat]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isStreaming || isTypingInitialQuery) {
@@ -307,14 +151,13 @@ export function Chat({ initialEmail = "" }: ChatProps) {
     window.sessionStorage.removeItem(CHAT_SESSION_KEY);
     setActiveSource(null);
     setDraft("");
-    setMessages([]);
+    clearMessages();
 
     try {
       await startInitialChat();
     } catch {
       setIsTypingInitialQuery(false);
-      setIsStreaming(false);
-      setMessages([
+      replaceMessages([
         {
           id: Date.now(),
           author: "assistant",
