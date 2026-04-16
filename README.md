@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Research Chat UI
+
+A Next.js take-home project for a mock AI research chat experience. It includes a lightweight auth shell, a chat UI with progressive streamed responses, citation-aware source cards, and session persistence.
+
+## Features
+
+- Mock login with email/password fields and a logout action.
+- Single-page chat UI with chat history and multiple queries per session.
+- Initial query is typed into the composer on page load, then submitted automatically.
+- Mock SSE endpoint streams answer chunks from `mock/fixture.json`.
+- Loading state appears while the first answer token is pending.
+- Inline citations like `[1]` highlight the matching source card on hover/focus.
+- Source cards stream in after the answer and expand to show snippets.
+- `error` query simulates a mid-stream failure and shows a recovery message.
+- Chat history persists in `sessionStorage`; `New chat` clears it after confirmation.
+
+## Tech Stack
+
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Tailwind CSS
+- Zustand for mock auth state
+- Server-Sent Events for the mock streaming endpoint
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How To Use
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Enter any email and password on the login screen.
+2. The app stores mock auth state and opens the chat UI.
+3. The initial research query types into the composer and submits automatically.
+4. Send another query to append a new streamed answer.
+5. Send `error` to test the simulated stream failure.
+6. Use `New chat` to clear the saved session and restart.
+7. Use `Logout` to return to the login screen.
 
-## Learn More
+## Mock Streaming API
 
-To learn more about Next.js, take a look at the following resources:
+The route handler at `app/api/chat/route.ts` reads `mock/fixture.json` and serves a mock SSE stream:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+GET /api/chat?query=What%20are%20the%20key%20capabilities...
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Events are emitted as `data: ...` frames:
 
-## Deploy on Vercel
+- `answer`: one streamed answer chunk
+- `source`: one source document after answer streaming completes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The stream uses a short initial delay, then emits answer chunks every `50ms` to simulate token-by-token generation.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+
+- `app/auth.tsx`: mock login screen
+- `app/chat.tsx`: chat state, SSE consumption, session persistence, new chat flow
+- `app/chat-message.tsx`: user and assistant message rendering
+- `app/source-cards.tsx`: citation source card rendering
+- `app/chat-types.ts`: shared chat/source types
+- `app/api/chat/route.ts`: mock SSE endpoint
+- `app/actions/auth.ts`: mock cookie-based login/logout actions
+- `app/store/auth.ts`: Zustand auth state
+- `mock/fixture.json`: mock query, answer, sources, and error trigger
+
+## Validation
+
+Run lint:
+
+```bash
+npm run lint
+```
+
+Run a production build:
+
+```bash
+npm run build
+```
+
+## Notes
+
+- This is intentionally mock-only. There is no real auth backend or model provider.
+- The auth cookie is `httpOnly`; the client also keeps lightweight Zustand state for immediate UI transitions.
+- Chat history uses `sessionStorage`, so it survives reloads in the same browser tab/session.
+- Source snippets are expandable on hover/focus to keep the chat response compact while still showing citation detail.
