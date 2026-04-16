@@ -67,10 +67,12 @@ The stream uses a short initial delay, then emits answer chunks every `50ms` to 
 ## Project Structure
 
 - `app/auth.tsx`: mock login screen
-- `app/chat.tsx`: chat state, SSE consumption, session persistence, new chat flow
+- `app/chat.tsx`: chat layout, composer state, initial query flow, new chat flow
 - `app/chat-message.tsx`: user and assistant message rendering
 - `app/source-cards.tsx`: citation source card rendering
 - `app/chat-types.ts`: shared chat/source types
+- `app/use-chat-stream.ts`: SSE stream consumption and chat message updates
+- `app/use-session-messages.ts`: sessionStorage persistence for chat history
 - `app/api/chat/route.ts`: mock SSE endpoint
 - `app/actions/auth.ts`: mock cookie-based login/logout actions
 - `app/store/auth.ts`: Zustand auth state
