@@ -50,6 +50,14 @@ function enqueueEvent(
   controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
 }
 
+export async function GET() {
+  const fixture = await getFixture();
+
+  return Response.json({
+    query: fixture.query,
+  });
+}
+
 export async function POST(request: Request) {
   const fixture = await getFixture();
   const body = (await request.json().catch(() => ({}))) as { query?: string };
@@ -61,6 +69,7 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      await wait(2000);
       if (!requestQuery) {
         enqueueEvent(controller, encoder, {
           type: "query",
