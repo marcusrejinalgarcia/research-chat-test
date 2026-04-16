@@ -17,10 +17,6 @@ type ChatFixture = {
 
 type ChatStreamEvent =
   | {
-      type: "query";
-      query: string;
-    }
-  | {
       type: "answer";
       chunk: string;
     }
@@ -35,6 +31,10 @@ function wait(ms: number) {
   });
 }
 
+const INITIAL_RESPONSE_DELAY_MS = 500;
+const TOKEN_DELAY_MS = 50;
+const SOURCE_DELAY_MS = 100;
+
 async function getFixture() {
   const filePath = join(process.cwd(), "mock", "fixture.json");
   const contents = await readFile(filePath, "utf8");
@@ -47,21 +47,14 @@ function enqueueEvent(
   encoder: TextEncoder,
   event: ChatStreamEvent,
 ) {
-  controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+  controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const fixture = await getFixture();
+  const url = new URL(request.url);
 
-  return Response.json({
-    query: fixture.query,
-  });
-}
-
-export async function POST(request: Request) {
-  const fixture = await getFixture();
-  const body = (await request.json().catch(() => ({}))) as { query?: string };
-  const requestQuery = body.query?.trim();
+  const requestQuery = url.searchParams.get("query")?.trim();
   const query = requestQuery || fixture.query;
   const answer = fixture.answer;
   const shouldError = query.toLowerCase() === fixture.error_query.toLowerCase();
@@ -69,14 +62,7 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      await wait(2000);
-      if (!requestQuery) {
-        enqueueEvent(controller, encoder, {
-          type: "query",
-          query,
-        });
-        await wait(120);
-      }
+      await wait(INITIAL_RESPONSE_DELAY_MS);
 
       const text = shouldError ? answer.slice(0, 60) : answer;
 
@@ -85,7 +71,7 @@ export async function POST(request: Request) {
           type: "answer",
           chunk: token,
         });
-        await wait(80);
+        await wait(TOKEN_DELAY_MS);
       }
 
       if (shouldError) {
@@ -98,7 +84,7 @@ export async function POST(request: Request) {
           type: "source",
           source,
         });
-        await wait(140);
+        await wait(SOURCE_DELAY_MS);
       }
 
       controller.close();
@@ -108,7 +94,9 @@ export async function POST(request: Request) {
   return new Response(stream, {
     headers: {
       "Cache-Control": "no-store",
-      "Content-Type": "application/x-ndjson; charset=utf-8",
+      Connection: "keep-alive",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "X-Accel-Buffering": "no",
     },
   });
 }

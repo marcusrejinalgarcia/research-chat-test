@@ -11,15 +11,7 @@ type ChatProps = {
   initialEmail?: string;
 };
 
-type InitialQueryResponse = {
-  query: string;
-};
-
 type ChatStreamEvent =
-  | {
-      type: "query";
-      query: string;
-    }
   | {
       type: "answer";
       chunk: string;
@@ -31,6 +23,8 @@ type ChatStreamEvent =
 
 const RECOVERY_MESSAGE = "Something went wrong. Please try again.";
 const INITIAL_QUERY_TYPE_INTERVAL_MS = 22;
+const INITIAL_QUERY =
+  "What are the key capabilities of CrowdStrike Falcon for endpoint detection?";
 const CHAT_SESSION_KEY = "research-chat:messages";
 
 function wait(ms: number) {
@@ -64,6 +58,21 @@ function readStoredMessages() {
   } catch {
     return [];
   }
+}
+
+function parseSseFrame(frame: string) {
+  const data = frame
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s?/, ""))
+    .join("\n")
+    .trim();
+
+  if (!data) {
+    return null;
+  }
+
+  return JSON.parse(data) as ChatStreamEvent;
 }
 
 export function Chat({ initialEmail = "" }: ChatProps) {
@@ -141,13 +150,11 @@ export function Chat({ initialEmail = "" }: ChatProps) {
     }
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(query ? { query } : {}),
-      });
+      const params = new URLSearchParams();
+      if (query) {
+        params.set("query", query);
+      }
+      const response = await fetch(`/api/chat?${params.toString()}`);
 
       if (!response.ok || !response.body) {
         throw new Error("Chat stream failed");
@@ -165,18 +172,14 @@ export function Chat({ initialEmail = "" }: ChatProps) {
         }
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
 
-        for (const line of lines) {
-          if (!line.trim()) {
+        for (const frame of frames) {
+          const event = parseSseFrame(frame);
+
+          if (!event) {
             continue;
-          }
-
-          const event = JSON.parse(line) as ChatStreamEvent;
-
-          if (event.type === "query" && !hasStartedMessages) {
-            startMessages(event.query);
           }
 
           if (event.type === "answer") {
@@ -195,17 +198,22 @@ export function Chat({ initialEmail = "" }: ChatProps) {
         }
       }
 
-      const finalLine = buffer.trim();
-      if (finalLine) {
-        const event = JSON.parse(finalLine) as ChatStreamEvent;
+      const finalEvent = parseSseFrame(buffer);
 
-        if (event.type === "source") {
-          updateAssistant((message) => ({
-            ...message,
-            sources: [...(message.sources ?? []), event.source],
-          }));
-        }
+      if (finalEvent?.type === "answer") {
+        updateAssistant((message) => ({
+          ...message,
+          body: `${message.body}${finalEvent.chunk}`,
+        }));
       }
+
+      if (finalEvent?.type === "source") {
+        updateAssistant((message) => ({
+          ...message,
+          sources: [...(message.sources ?? []), finalEvent.source],
+        }));
+      }
+
     } catch {
       showRecoveryMessage();
     } finally {
@@ -214,25 +222,18 @@ export function Chat({ initialEmail = "" }: ChatProps) {
   }, []);
 
   const startInitialChat = useCallback(async () => {
-    const response = await fetch("/api/chat");
-
-    if (!response.ok) {
-      throw new Error("Initial query failed");
-    }
-
-    const initial = (await response.json()) as InitialQueryResponse;
     setIsTypingInitialQuery(true);
     setDraft("");
 
-    for (let index = 1; index <= initial.query.length; index += 1) {
-      setDraft(initial.query.slice(0, index));
+    for (let index = 1; index <= INITIAL_QUERY.length; index += 1) {
+      setDraft(INITIAL_QUERY.slice(0, index));
       await wait(INITIAL_QUERY_TYPE_INTERVAL_MS);
     }
 
     await wait(250);
     setDraft("");
     setIsTypingInitialQuery(false);
-    await streamAnswer(initial.query);
+    await streamAnswer(INITIAL_QUERY);
   }, [streamAnswer]);
 
   useEffect(() => {
