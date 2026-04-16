@@ -57,11 +57,13 @@ export function SourceCards({
                 </p>
               </div>
             </div>
-            {isActive && (
-              <p className="mt-3 text-sm leading-6 text-[#343946]">
-                {source.snippet}
-              </p>
-            )}
+            <p
+              className={`mt-3 text-sm leading-6 text-[#343946] ${
+                isActive ? "" : "truncate"
+              }`}
+            >
+              {source.snippet}
+            </p>
           </article>
         );
       })}
