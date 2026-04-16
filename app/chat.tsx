@@ -40,10 +40,11 @@ export function Chat({ initialEmail = "" }: ChatProps) {
   const [isTypingInitialQuery, setIsTypingInitialQuery] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isConfirmingNewChat, setIsConfirmingNewChat] = useState(false);
+  const [isSessionReady, setIsSessionReady] = useState(false);
   const hasStartedFixture = useRef(false);
   const email = storedEmail || initialEmail || "you@example.com";
   const { clearStoredMessages, getStoredMessages } = useSessionMessages({
-    isPaused: isStreaming || isTypingInitialQuery,
+    isPaused: !isSessionReady || isStreaming || isTypingInitialQuery,
     messages,
   });
 
@@ -75,14 +76,17 @@ export function Chat({ initialEmail = "" }: ChatProps) {
 
       if (storedMessages.length > 0) {
         replaceMessages(storedMessages);
+        setIsSessionReady(true);
         return;
       }
 
+      setIsSessionReady(true);
       await startInitialChat();
     }
 
     restoreOrStartInitialChat().catch(() => {
       setIsTypingInitialQuery(false);
+      setIsSessionReady(true);
       replaceMessages([
         {
           id: createMessageId(),
