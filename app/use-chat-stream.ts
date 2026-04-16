@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { createMessageId } from "./chat-ids";
 import type { ChatMessage, FixtureSource } from "./chat-types";
 
 type ChatStreamEvent =
@@ -41,8 +42,8 @@ export function useChatStream() {
   }, []);
 
   const streamAnswer = useCallback(async (query: string) => {
-    const userMessageId = Date.now();
-    const assistantMessageId = userMessageId + 1;
+    const userMessageId = createMessageId();
+    const assistantMessageId = createMessageId();
 
     function updateAssistant(updater: (message: ChatMessage) => ChatMessage) {
       setMessages((currentMessages) =>

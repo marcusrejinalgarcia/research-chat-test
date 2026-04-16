@@ -9,7 +9,7 @@ type ChatMessageRowProps = {
 };
 
 type AnswerTextProps = {
-  messageId: number;
+  messageId: string;
   setActiveSource: (activeSource: ActiveSource | null) => void;
   sources: FixtureSource[] | undefined;
   text: string;

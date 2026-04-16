@@ -6,7 +6,7 @@ export type FixtureSource = {
 };
 
 export type ChatMessage = {
-  id: number;
+  id: string;
   author: "assistant" | "you";
   body: string;
   sources?: FixtureSource[];
@@ -14,6 +14,6 @@ export type ChatMessage = {
 };
 
 export type ActiveSource = {
-  messageId: number;
+  messageId: string;
   sourceId: number;
 };

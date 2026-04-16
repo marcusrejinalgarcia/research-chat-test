@@ -2,7 +2,7 @@ import type { ActiveSource, FixtureSource } from "./chat-types";
 
 type SourceCardsProps = {
   activeSource: ActiveSource | null;
-  messageId: number;
+  messageId: string;
   setActiveSource: (activeSource: ActiveSource | null) => void;
   sources: FixtureSource[];
 };
