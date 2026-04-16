@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { signOutMock } from "./actions/auth";
 import { useAuthStore } from "./store/auth";
@@ -15,6 +16,10 @@ type ChatMessage = {
 
 type ChatProps = {
   initialEmail?: string;
+};
+
+type InitialQueryResponse = {
+  query: string;
 };
 
 type FixtureSource = {
@@ -38,19 +43,65 @@ type ChatStreamEvent =
       source: FixtureSource;
     };
 
+type ActiveSource = {
+  messageId: number;
+  sourceId: number;
+};
+
 const RECOVERY_MESSAGE = "Something went wrong. Please try again.";
+const INITIAL_QUERY_TYPE_INTERVAL_MS = 22;
+const CHAT_SESSION_KEY = "research-chat:messages";
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function getEmailInitial(email: string) {
   return email.trim().charAt(0).toUpperCase() || "U";
 }
 
+function readStoredMessages() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const storedMessages = window.sessionStorage.getItem(CHAT_SESSION_KEY);
+  if (!storedMessages) {
+    return [];
+  }
+
+  try {
+    const parsedMessages = JSON.parse(storedMessages) as ChatMessage[];
+
+    if (!Array.isArray(parsedMessages)) {
+      return [];
+    }
+
+    return parsedMessages;
+  } catch {
+    return [];
+  }
+}
+
 function renderAnswerText(
+  messageId: number,
   text: string,
   sources: FixtureSource[] | undefined,
-  setActiveSourceId: (sourceId: number | null) => void,
+  setActiveSource: (activeSource: ActiveSource | null) => void,
 ) {
   if (!text) {
-    return "Thinking...";
+    return (
+      <Image
+        alt="Loading response"
+        className="size-8"
+        height={32}
+        src="/loading_ring.gif"
+        unoptimized
+        width={32}
+      />
+    );
   }
 
   if (!sources?.length) {
@@ -71,10 +122,10 @@ function renderAnswerText(
       <button
         className="mx-0.5 rounded border border-[#9ac6b3] bg-[#eef7f2] px-1.5 py-0.5 text-xs font-semibold text-[#125c47] transition hover:bg-[#d8f0e4] focus:outline-none focus:ring-2 focus:ring-[#16785c]/25"
         key={`${part}-${index}`}
-        onBlur={() => setActiveSourceId(null)}
-        onFocus={() => setActiveSourceId(citationId)}
-        onMouseEnter={() => setActiveSourceId(citationId)}
-        onMouseLeave={() => setActiveSourceId(null)}
+        onBlur={() => setActiveSource(null)}
+        onFocus={() => setActiveSource({ messageId, sourceId: citationId })}
+        onMouseEnter={() => setActiveSource({ messageId, sourceId: citationId })}
+        onMouseLeave={() => setActiveSource(null)}
         type="button"
       >
         {part}
@@ -89,9 +140,11 @@ export function Chat({ initialEmail = "" }: ChatProps) {
   const logout = useAuthStore((state) => state.logout);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
+  const [activeSource, setActiveSource] = useState<ActiveSource | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isTypingInitialQuery, setIsTypingInitialQuery] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isConfirmingNewChat, setIsConfirmingNewChat] = useState(false);
   const hasStartedFixture = useRef(false);
   const email = storedEmail || initialEmail || "you@example.com";
 
@@ -149,7 +202,7 @@ export function Chat({ initialEmail = "" }: ChatProps) {
     }
 
     setIsStreaming(true);
-    setActiveSourceId(null);
+    setActiveSource(null);
 
     if (query) {
       startMessages(query);
@@ -228,6 +281,28 @@ export function Chat({ initialEmail = "" }: ChatProps) {
     }
   }, []);
 
+  const startInitialChat = useCallback(async () => {
+    const response = await fetch("/api/chat");
+
+    if (!response.ok) {
+      throw new Error("Initial query failed");
+    }
+
+    const initial = (await response.json()) as InitialQueryResponse;
+    setIsTypingInitialQuery(true);
+    setDraft("");
+
+    for (let index = 1; index <= initial.query.length; index += 1) {
+      setDraft(initial.query.slice(0, index));
+      await wait(INITIAL_QUERY_TYPE_INTERVAL_MS);
+    }
+
+    await wait(250);
+    setDraft("");
+    setIsTypingInitialQuery(false);
+    await streamAnswer(initial.query);
+  }, [streamAnswer]);
+
   useEffect(() => {
     if (hasStartedFixture.current) {
       return;
@@ -235,7 +310,19 @@ export function Chat({ initialEmail = "" }: ChatProps) {
 
     hasStartedFixture.current = true;
 
-    streamAnswer().catch(() => {
+    async function restoreOrStartInitialChat() {
+      const storedMessages = readStoredMessages();
+
+      if (storedMessages.length > 0) {
+        setMessages(storedMessages);
+        return;
+      }
+
+      await startInitialChat();
+    }
+
+    restoreOrStartInitialChat().catch(() => {
+      setIsTypingInitialQuery(false);
       setMessages([
         {
           id: Date.now(),
@@ -246,16 +333,30 @@ export function Chat({ initialEmail = "" }: ChatProps) {
       ]);
       setIsStreaming(false);
     });
-  }, [streamAnswer]);
+  }, [startInitialChat]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isStreaming || isTypingInitialQuery) {
+      return;
+    }
+
+    if (messages.length === 0) {
+      window.sessionStorage.removeItem(CHAT_SESSION_KEY);
+      return;
+    }
+
+    window.sessionStorage.setItem(CHAT_SESSION_KEY, JSON.stringify(messages));
+  }, [isStreaming, isTypingInitialQuery, messages]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const trimmedDraft = draft.trim();
-    if (!trimmedDraft || isStreaming) {
+    if (!trimmedDraft || isStreaming || isTypingInitialQuery) {
       return;
     }
 
+    setIsConfirmingNewChat(false);
     setDraft("");
     void streamAnswer(trimmedDraft);
   }
@@ -263,8 +364,32 @@ export function Chat({ initialEmail = "" }: ChatProps) {
   async function handleLogout() {
     setIsLoggingOut(true);
     await signOutMock();
+    window.sessionStorage.removeItem(CHAT_SESSION_KEY);
     logout();
     router.refresh();
+  }
+
+  async function handleNewChat() {
+    setIsConfirmingNewChat(false);
+    window.sessionStorage.removeItem(CHAT_SESSION_KEY);
+    setActiveSource(null);
+    setDraft("");
+    setMessages([]);
+
+    try {
+      await startInitialChat();
+    } catch {
+      setIsTypingInitialQuery(false);
+      setIsStreaming(false);
+      setMessages([
+        {
+          id: Date.now(),
+          author: "assistant",
+          body: RECOVERY_MESSAGE,
+          time: "Now",
+        },
+      ]);
+    }
   }
 
   return (
@@ -362,9 +487,10 @@ export function Chat({ initialEmail = "" }: ChatProps) {
                       {isUser
                         ? message.body
                         : renderAnswerText(
+                            message.id,
                             message.body,
                             message.sources,
-                            setActiveSourceId,
+                            setActiveSource,
                           )}
                     </p>
                     <p
@@ -379,7 +505,9 @@ export function Chat({ initialEmail = "" }: ChatProps) {
                   {!isUser && !!message.sources?.length && (
                     <div className="grid w-full gap-2">
                       {message.sources.map((source) => {
-                        const isActive = activeSourceId === source.id;
+                        const isActive =
+                          activeSource?.messageId === message.id &&
+                          activeSource.sourceId === source.id;
 
                         return (
                           <article
@@ -389,10 +517,20 @@ export function Chat({ initialEmail = "" }: ChatProps) {
                                 : "border-[#d8ded8] bg-white"
                             }`}
                             key={source.id}
-                            onBlur={() => setActiveSourceId(null)}
-                            onFocus={() => setActiveSourceId(source.id)}
-                            onMouseEnter={() => setActiveSourceId(source.id)}
-                            onMouseLeave={() => setActiveSourceId(null)}
+                            onBlur={() => setActiveSource(null)}
+                            onFocus={() =>
+                              setActiveSource({
+                                messageId: message.id,
+                                sourceId: source.id,
+                              })
+                            }
+                            onMouseEnter={() =>
+                              setActiveSource({
+                                messageId: message.id,
+                                sourceId: source.id,
+                              })
+                            }
+                            onMouseLeave={() => setActiveSource(null)}
                             tabIndex={0}
                           >
                             <div className="flex items-start gap-2">
@@ -430,12 +568,46 @@ export function Chat({ initialEmail = "" }: ChatProps) {
           onSubmit={handleSubmit}
         >
           <div className="flex gap-3">
+            <div className="relative">
+              {isConfirmingNewChat && (
+                <div className="absolute bottom-14 left-0 z-10 w-72 rounded-lg border border-[#d8ded8] bg-white p-4 shadow-lg">
+                  <p className="text-sm font-semibold">Start a new chat?</p>
+                  <p className="mt-1 text-sm leading-5 text-[#626a66]">
+                    This clears the saved chat for this browser session.
+                  </p>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      className="h-9 rounded-lg border border-[#cbd5cf] px-3 text-sm font-medium text-[#343946] transition hover:bg-[#f1f3f1]"
+                      onClick={() => setIsConfirmingNewChat(false)}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="h-9 rounded-lg bg-[#d94b38] px-3 text-sm font-semibold text-white transition hover:bg-[#bf3f30]"
+                      onClick={handleNewChat}
+                      type="button"
+                    >
+                      New chat
+                    </button>
+                  </div>
+                </div>
+              )}
+              <button
+                className="h-12 whitespace-nowrap rounded-lg border border-[#cbd5cf] px-5 text-base font-semibold text-[#343946] transition hover:bg-[#f1f3f1] focus:outline-none focus:ring-4 focus:ring-[#16785c]/15 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={isStreaming || isTypingInitialQuery}
+                onClick={() => setIsConfirmingNewChat(true)}
+                type="button"
+              >
+                New chat
+              </button>
+            </div>
             <label className="sr-only" htmlFor="chat-message">
               Message
             </label>
             <input
               className="h-12 min-w-0 flex-1 rounded-lg border border-[#cbd5cf] bg-white px-4 text-base outline-none transition focus:border-[#16785c] focus:ring-4 focus:ring-[#16785c]/15"
-              disabled={isStreaming}
+              disabled={isStreaming || isTypingInitialQuery}
               id="chat-message"
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Write a message..."
@@ -443,10 +615,10 @@ export function Chat({ initialEmail = "" }: ChatProps) {
             />
             <button
               className="h-12 rounded-lg bg-[#d94b38] px-5 text-base font-semibold text-white transition hover:bg-[#bf3f30] focus:outline-none focus:ring-4 focus:ring-[#d94b38]/20 disabled:cursor-not-allowed disabled:opacity-70"
-              disabled={isStreaming}
+              disabled={isStreaming || isTypingInitialQuery}
               type="submit"
             >
-              {isStreaming ? "Streaming" : "Send"}
+              {isStreaming || isTypingInitialQuery ? "Streaming" : "Send"}
             </button>
           </div>
         </form>
