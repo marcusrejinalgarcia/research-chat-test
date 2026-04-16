@@ -14,7 +14,7 @@ export function SourceCards({
   sources,
 }: SourceCardsProps) {
   return (
-    <div className="grid w-full gap-2">
+    <div className="flex flex-col gap-2 w-[min(38rem,78vw)]">
       {sources.map((source) => {
         const isActive =
           activeSource?.messageId === messageId &&
@@ -22,7 +22,7 @@ export function SourceCards({
 
         return (
           <article
-            className={`rounded-lg border px-3 py-2 transition ${
+            className={`rounded-lg border shadow-sm px-3 py-2 transition ${
               isActive
                 ? "border-[#16785c] bg-[#eef7f2]"
                 : "border-[#d8ded8] bg-white"
