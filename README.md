@@ -2,6 +2,8 @@
 
 A Next.js take-home project for a mock AI research chat experience. It includes a lightweight auth shell, a chat UI with progressive streamed responses, citation-aware source cards, and session persistence.
 
+https://github.com/user-attachments/assets/92bc2183-4920-4ced-9d53-65da4a9c738b
+
 ## Features
 
 - Mock login with email/password fields and a logout action.
